@@ -4,6 +4,7 @@
 # #### Siva Satvik Mandapati - sm12779
 
 # %%
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,6 +15,10 @@ import os
 import json
 
 from pathlib import Path
+
+# Force line-buffered stdout so print statements appear immediately in sbatch /
+# Singularity logs rather than being flushed only at script exit.
+sys.stdout.reconfigure(line_buffering=True)
 
 # Reproducibility
 SEED = 42
