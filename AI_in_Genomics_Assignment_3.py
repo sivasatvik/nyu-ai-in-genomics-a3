@@ -412,7 +412,10 @@ for k, v in splits.items():
 # %%
 from transformers import AutoTokenizer, AutoModel
 
-dna_model_name = "models/nucleotide-transformer-v2-500m-multi-species"
+dna_model_repo = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
+dna_model_local = Path("models/nucleotide-transformer-v2-500m-multi-species")
+dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model_repo
+print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -452,7 +455,10 @@ else:
 # ### 2.2 Protein embeddings (ESM2)
 
 # %%
-protein_model_name = "facebook/esm2_t33_650M_UR50D"
+protein_model_repo = "facebook/esm2_t33_650M_UR50D"
+protein_model_local = Path("models/esm2_t33_650M_UR50D")
+protein_model_name = str(protein_model_local) if protein_model_local.exists() else protein_model_repo
+print(f"[INFO] Loading protein model from {'local folder' if protein_model_local.exists() else 'Hugging Face'}: {protein_model_name}")
 
 prot_tokenizer = AutoTokenizer.from_pretrained(protein_model_name)
 prot_model = AutoModel.from_pretrained(protein_model_name).eval().to(device)
