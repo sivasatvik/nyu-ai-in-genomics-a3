@@ -412,7 +412,7 @@ for k, v in splits.items():
 # %%
 from transformers import AutoTokenizer, AutoModel
 
-dna_model_name = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
+dna_model_name = "models/nucleotide-transformer-v2-500m-multi-species"
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
