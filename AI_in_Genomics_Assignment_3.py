@@ -433,16 +433,11 @@ dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model
 print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
-dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
-if not hasattr(dna_config, "is_decoder"):
-    dna_config.is_decoder = False
-if not hasattr(dna_config, "add_cross_attention"):
-    dna_config.add_cross_attention = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dna_model = AutoModel.from_pretrained(
     dna_model_name,
-    config=dna_config,
     trust_remote_code=True,
+    ignore_mismatched_sizes=True,
 ).eval().to(device)
 if torch.cuda.is_available():
     dna_model = dna_model.half()  # fp16 on GPU
