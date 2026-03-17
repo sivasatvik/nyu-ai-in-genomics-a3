@@ -425,7 +425,7 @@ for k, v in splits.items():
 # ### 2.1 Nucleotide Transformer (CDS embeddings)
 
 # %%
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 
 dna_model_repo = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
 dna_model_local = Path("models/nucleotide-transformer-v2-500m-multi-species")
@@ -433,8 +433,15 @@ dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model
 print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
+dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
+if not hasattr(dna_config, "is_decoder"):
+    dna_config.is_decoder = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-dna_model = AutoModel.from_pretrained(dna_model_name, trust_remote_code=True).eval().to(device)
+dna_model = AutoModel.from_pretrained(
+    dna_model_name,
+    config=dna_config,
+    trust_remote_code=True,
+).eval().to(device)
 if torch.cuda.is_available():
     dna_model = dna_model.half()  # fp16 on GPU
 
@@ -476,7 +483,10 @@ protein_model_name = str(protein_model_local) if protein_model_local.exists() el
 print(f"[INFO] Loading protein model from {'local folder' if protein_model_local.exists() else 'Hugging Face'}: {protein_model_name}")
 
 prot_tokenizer = AutoTokenizer.from_pretrained(protein_model_name)
-prot_model = AutoModel.from_pretrained(protein_model_name).eval().to(device)
+prot_config = AutoConfig.from_pretrained(protein_model_name)
+if not hasattr(prot_config, "is_decoder"):
+    prot_config.is_decoder = False
+prot_model = AutoModel.from_pretrained(protein_model_name, config=prot_config).eval().to(device)
 if torch.cuda.is_available():
     prot_model = prot_model.half()
 
