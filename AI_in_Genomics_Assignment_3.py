@@ -433,18 +433,31 @@ dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model
 print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
-dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
-# Patch attributes missing from older config JSONs (required by newer transformers)
-if not hasattr(dna_config, "is_decoder"):
-    dna_config.is_decoder = False
-if not hasattr(dna_config, "add_cross_attention"):
-    dna_config.add_cross_attention = False
+# Silence the "sequence length > model_max_length" warning: embed_dna handles long
+# sequences via sliding windows, so the full-sequence tokenise call is intentional.
+dna_tokenizer.model_max_length = int(1e9)
+
+# Patch EsmConfig at the CLASS level so every instance (including ones created
+# internally by the model loader) gets the attributes that newer transformers reads.
+# We do this instead of patching a single instance because from_pretrained with
+# trust_remote_code=True creates fresh EsmConfig instances when building layers.
+from transformers.models.esm.configuration_esm import EsmConfig as _EsmConfig
+_orig_esm_init = _EsmConfig.__init__
+def _patched_esm_init(self, *args, **kwargs):
+    _orig_esm_init(self, *args, **kwargs)
+    if not hasattr(self, "is_decoder"):
+        self.is_decoder = False
+    if not hasattr(self, "add_cross_attention"):
+        self.add_cross_attention = False
+_EsmConfig.__init__ = _patched_esm_init
+
+# Load WITHOUT explicit config= so the NT v2's own config.json sets the correct
+# intermediate_size=8192. Passing AutoConfig would silently use EsmConfig's default
+# of 4096, causing a weight shape mismatch that corrupts the loaded embeddings.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dna_model = AutoModel.from_pretrained(
     dna_model_name,
-    config=dna_config,
     trust_remote_code=True,
-    ignore_mismatched_sizes=True,
 ).eval().to(device)
 if torch.cuda.is_available():
     dna_model = dna_model.half()  # fp16 on GPU
