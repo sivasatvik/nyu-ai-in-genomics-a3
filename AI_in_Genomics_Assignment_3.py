@@ -436,6 +436,8 @@ dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=
 dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
 if not hasattr(dna_config, "is_decoder"):
     dna_config.is_decoder = False
+if not hasattr(dna_config, "add_cross_attention"):
+    dna_config.add_cross_attention = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dna_model = AutoModel.from_pretrained(
     dna_model_name,
@@ -486,6 +488,8 @@ prot_tokenizer = AutoTokenizer.from_pretrained(protein_model_name)
 prot_config = AutoConfig.from_pretrained(protein_model_name)
 if not hasattr(prot_config, "is_decoder"):
     prot_config.is_decoder = False
+if not hasattr(prot_config, "add_cross_attention"):
+    prot_config.add_cross_attention = False
 prot_model = AutoModel.from_pretrained(protein_model_name, config=prot_config).eval().to(device)
 if torch.cuda.is_available():
     prot_model = prot_model.half()
