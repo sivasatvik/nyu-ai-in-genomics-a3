@@ -433,9 +433,16 @@ dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model
 print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
+dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
+# Patch attributes missing from older config JSONs (required by newer transformers)
+if not hasattr(dna_config, "is_decoder"):
+    dna_config.is_decoder = False
+if not hasattr(dna_config, "add_cross_attention"):
+    dna_config.add_cross_attention = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dna_model = AutoModel.from_pretrained(
     dna_model_name,
+    config=dna_config,
     trust_remote_code=True,
     ignore_mismatched_sizes=True,
 ).eval().to(device)
@@ -485,7 +492,7 @@ if not hasattr(prot_config, "is_decoder"):
     prot_config.is_decoder = False
 if not hasattr(prot_config, "add_cross_attention"):
     prot_config.add_cross_attention = False
-prot_model = AutoModel.from_pretrained(protein_model_name, config=prot_config).eval().to(device)
+prot_model = AutoModel.from_pretrained(protein_model_name, config=prot_config, ignore_mismatched_sizes=True).eval().to(device)
 if torch.cuda.is_available():
     prot_model = prot_model.half()
 
