@@ -235,7 +235,7 @@ def build_tf_dataset(per_species_limit=300, promoter_flank=2000, throttle_sec=0.
 
     dataset = pd.concat(records, ignore_index=True)
     out_dir = DATA_DIR
-    parquet_path = out_dir / "tf_multispecies_sequences.parquet"
+    parquet_path = out_dir / "tf_multispecies_sequences_large.parquet"
     dataset.to_parquet(parquet_path, index=False)
     print(f"[INFO] Saved dataset with shape {dataset.shape} to {parquet_path}")
 
@@ -250,7 +250,7 @@ def build_tf_dataset(per_species_limit=300, promoter_flank=2000, throttle_sec=0.
     return dataset
 
 # Load dataset if already built, otherwise build it
-parquet_path = DATA_DIR / "tf_multispecies_sequences.parquet"
+parquet_path = DATA_DIR / "tf_multispecies_sequences_large.parquet"
 if parquet_path.exists():
     dataset = pd.read_parquet(parquet_path)
     print(f"[INFO] Loaded existing dataset with shape {dataset.shape}")
@@ -412,7 +412,7 @@ for k, v in splits.items():
 # %%
 from transformers import AutoTokenizer, AutoModel
 
-dna_model_name = "InstaDeepAI/nucleotide-transformer-500m-multi-species"
+dna_model_name = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
