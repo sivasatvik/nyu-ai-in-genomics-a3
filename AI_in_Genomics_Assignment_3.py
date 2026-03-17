@@ -16,6 +16,9 @@ import json
 
 from pathlib import Path
 
+# Non-interactive plotting for batch runs / script export
+plt.ioff()
+
 # Force line-buffered stdout so print statements appear immediately in sbatch /
 # Singularity logs rather than being flushed only at script exit.
 sys.stdout.reconfigure(line_buffering=True)
@@ -30,6 +33,8 @@ if torch.cuda.is_available():
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
+FIG_DIR = Path("figures")
+FIG_DIR.mkdir(exist_ok=True)
 
 
 # %% [markdown]
@@ -286,7 +291,10 @@ axes[1].set_title("Protein Length Distribution per Species")
 axes[1].set_ylabel("Protein length (aa)")
 
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "cds_protein_length_distributions.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
@@ -302,7 +310,11 @@ dataset["gc"] = dataset["cds_seq"].apply(gc_content)
 fig, ax = plt.subplots(figsize=(8, 4))
 sns.boxplot(data=dataset, x="species", y="gc", hue="is_tf", ax=ax)
 ax.set_title("GC Content per Species (TF vs non-TF)")
-plt.show()
+plt.tight_layout()
+fig_path = FIG_DIR / "gc_content_by_species_tf_vs_nontf.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 # Amino-acid composition (fraction of each of 20 standard AA per protein)
 AA_ALPHABET = list("ACDEFGHIKLMNPQRSTVWY")
@@ -328,7 +340,10 @@ ax.set_xlabel("Amino acid")
 ax.set_ylabel("Mean fraction")
 ax.legend(title="Species")
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "mean_amino_acid_composition_by_species.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
@@ -843,7 +858,10 @@ for ax, title in zip(axes, ["DNA (NT) FM – ROC Curves", "Protein (ESM2) FM –
     ax.legend()
 
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "roc_curves_split1_mouse_fly.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
@@ -867,7 +885,10 @@ for row_i, (clf_obj, label) in enumerate([(clf_dna_s1, "DNA FM"), (clf_prot_s1, 
         axes[row_i][col_i].set_title(f"{label} – {sp}")
 
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "confusion_matrices_split1_mouse_fly.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
@@ -954,7 +975,10 @@ axes[1].set_title(f"{method_label} – Protein Embeddings (by Label)")
 axes[1].legend(title="Label", markerscale=2)
 
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "protein_embedding_projection.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 # ── DNA embeddings ─────────────────────────────────────────────────────────
 dna_2d = dim_reduce(dna_embeddings)
@@ -973,7 +997,10 @@ axes[1].set_title(f"{method_label} – DNA Embeddings (by Label)")
 axes[1].legend(title="Label", markerscale=2)
 
 plt.tight_layout()
-plt.show()
+fig_path = FIG_DIR / "dna_embedding_projection.png"
+fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
