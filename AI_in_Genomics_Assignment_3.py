@@ -143,7 +143,7 @@ def sample_non_tf_genes(species: str, n_samples: int) -> pd.DataFrame:
 
 
 # %% [markdown]
-# ### 1.3 Retrieve promoter, CDS, and protein sequences
+# ### 1.3.1 Retrieve promoter, CDS, and protein sequences
 
 # %%
 def fetch_gene_metadata(ensembl_gene_id: str):
@@ -217,7 +217,7 @@ def build_sequences(df, species, promoter_flank=2000, throttle_sec=0.2):
 
 
 # %% [markdown]
-# ### 1.4 Build full dataset
+# ### 1.3.2 Build full dataset
 
 # %%
 def build_tf_dataset(per_species_limit=300, promoter_flank=2000, throttle_sec=0.2):
@@ -266,7 +266,10 @@ dataset.head()
 
 
 # %% [markdown]
-# ## 1.5 Dataset Statistics + Visualizations
+# I noticed that building the dataset takes a lot of time because retrieving data from the endpoints is slow. To address this, I added a condition to load the dataset from local storage when it is available, instead of rebuilding it each time.
+
+# %% [markdown]
+# ## 1.4 Dataset Statistics + Visualizations
 # ### Gene counts per species and label
 
 # %%
@@ -296,6 +299,23 @@ fig.savefig(fig_path, dpi=300, bbox_inches="tight")
 plt.close(fig)
 print(f"[INFO] Saved figure: {fig_path}")
 
+
+# %% [markdown]
+# Gene counts per species and label:
+# 
+# | species  | non-TF (0) | TF (1) | Total |
+# |----------|------------|--------|-------|
+# | fruitfly | 300        | 291    | 591   |
+# | human    | 500        | 500    | 1000  |
+# | mouse    | 500        | 500    | 1000  |
+
+# %% [markdown]
+# ![CDS Protein Length Distributions](figures/cds_protein_length_distributions.png)
+# The above figure shows the distributions of CDS and protein lengths across the three species.
+# 
+# CDS Length: Most CDS sequences across all three species are relatively short, concentrated below 5,000 bp. However, fruitfly sequences exhibit significantly more extreme outliers, with some reaching nearly 50,000 bp, whereas human and mouse sequences generally remain below 20,000 bp
+# 
+# Protein Length: Similar to CDS lengths, protein sequences are largely clustered under 1,000–2,000 amino acids. Again, fruitfly proteins show the highest variance and extreme outliers, with some sequences approaching 20,000 aa, while human and mouse distributions are more tightly constrained
 
 # %% [markdown]
 # ### GC content and amino-acid composition
@@ -347,16 +367,22 @@ print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
-# ### 1.4 Dataset Snapshot – Observations
+# ![GC Content by Species](figures/gc_content_by_species_tf_vs_nontf.png)
+# The above figure compares the GC content of CDS sequences across species, stratified by TF vs non-TF genes. Transcription factors (TF, label 1) consistently show a higher median GC content compared to non-TF genes (label 0) across all three species. This trend is particularly prominent in human and fruitfly. In mouse, the GC content distribution is broader for both categories, with a noticeable presence of low-GC outliers in the non-TF group
 # 
-# - **CDS length**: Human and mouse CDS sequences tend to be longer than fly, reflecting the larger and more complex genomes of mammals. TF genes often have longer CDS than non-TF genes.
-# - **Protein length**: Mirrors CDS length trends. Fly proteins are generally shorter on average.
-# - **GC content**: Human and mouse CDS sequences have higher GC content (~50–55%) than fly (~42–48%), consistent with known genome-wide GC differences between vertebrates and insects.
-# - **Amino-acid composition**: Differences in serine (S), glycine (G), and glutamic acid (E) fractions across species are notable. TF proteins tend to be enriched in charged/polar residues (K, R, E) compared to non-TFs, which is consistent with their DNA-binding role.
+# Mean amino-acid composition per species (first 5 AAs shown):
 # 
+# | species  | A      | C      | D      | E      | F      |
+# |----------|--------|--------|--------|--------|--------|
+# | fruitfly | 0.0778 | 0.0217 | 0.0493 | 0.0605 | 0.0330 |
+# | human    | 0.0832 | 0.0252 | 0.0397 | 0.0797 | 0.0315 |
+# | mouse    | 0.1028 | 0.0341 | 0.0284 | 0.1128 | 0.0231 |
+# 
+# ![Mean Amino-Acid Composition](figures/mean_amino_acid_composition_by_species.png)
+# The above figure shows the mean amino-acid composition of proteins across species. The mean amino-acid composition is highly conserved across human, mouse, and fruitfly, with Alanine (A), Leucine (L), and Serine (S) being among the most frequent. Subtle species-specific differences exist: mouse proteins show a significantly higher fraction of Glutamic Acid (E) compared to the other species, while fruitfly has slightly higher levels of Aspartic Acid (D)
 
 # %% [markdown]
-# ## 1.6 Train/Val/Test Splits
+# ## 1.5 Train/Val/Test Splits
 
 # %%
 from sklearn.model_selection import train_test_split
@@ -419,7 +445,19 @@ for k, v in splits.items():
 
 
 # %% [markdown]
-# ## 2. DNA / Protein Foundation Model Embeddings
+# Split sizes:
+# > split1_train: 700 samples\
+#   split1_val: 150 samples\
+#   split1_test: 1591 samples\
+#   split2_train: 1050 samples\
+#   split2_val: 50 samples\
+#   split2_test: 1491 samples\
+#   split3_train: 1600 samples\
+#   split3_val: 400 samples\
+#   split3_test: 591 samples
+
+# %% [markdown]
+# ## 2. DNA / Protein Foundation Model Classifiers
 
 # %% [markdown]
 # ### 2.1 Nucleotide Transformer (CDS embeddings)
@@ -433,31 +471,18 @@ dna_model_name = str(dna_model_local) if dna_model_local.exists() else dna_model
 print(f"[INFO] Loading DNA model from {'local folder' if dna_model_local.exists() else 'Hugging Face'}: {dna_model_name}")
 
 dna_tokenizer = AutoTokenizer.from_pretrained(dna_model_name, trust_remote_code=True)
-# Silence the "sequence length > model_max_length" warning: embed_dna handles long
-# sequences via sliding windows, so the full-sequence tokenise call is intentional.
-dna_tokenizer.model_max_length = int(1e9)
-
-# Patch EsmConfig at the CLASS level so every instance (including ones created
-# internally by the model loader) gets the attributes that newer transformers reads.
-# We do this instead of patching a single instance because from_pretrained with
-# trust_remote_code=True creates fresh EsmConfig instances when building layers.
-from transformers.models.esm.configuration_esm import EsmConfig as _EsmConfig
-_orig_esm_init = _EsmConfig.__init__
-def _patched_esm_init(self, *args, **kwargs):
-    _orig_esm_init(self, *args, **kwargs)
-    if not hasattr(self, "is_decoder"):
-        self.is_decoder = False
-    if not hasattr(self, "add_cross_attention"):
-        self.add_cross_attention = False
-_EsmConfig.__init__ = _patched_esm_init
-
-# Load WITHOUT explicit config= so the NT v2's own config.json sets the correct
-# intermediate_size=8192. Passing AutoConfig would silently use EsmConfig's default
-# of 4096, causing a weight shape mismatch that corrupts the loaded embeddings.
+dna_config = AutoConfig.from_pretrained(dna_model_name, trust_remote_code=True)
+# Patch attributes missing from older config JSONs (required by newer transformers)
+if not hasattr(dna_config, "is_decoder"):
+    dna_config.is_decoder = False
+if not hasattr(dna_config, "add_cross_attention"):
+    dna_config.add_cross_attention = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dna_model = AutoModel.from_pretrained(
     dna_model_name,
+    config=dna_config,
     trust_remote_code=True,
+    ignore_mismatched_sizes=True,
 ).eval().to(device)
 if torch.cuda.is_available():
     dna_model = dna_model.half()  # fp16 on GPU
@@ -489,6 +514,9 @@ else:
     np.save(dna_emb_path, dna_embeddings)
     print(f"[INFO] Saved DNA embeddings: {dna_embeddings.shape}")
 
+
+# %% [markdown]
+# Here, I added an option to load a locally downloaded model, since downloading the model during runtime was too time-consuming.
 
 # %% [markdown]
 # ### 2.2 Protein embeddings (ESM2)
@@ -528,10 +556,10 @@ else:
 
 
 # %% [markdown]
-# ## 3. Baselines + Classifiers
+# ### 2.3 Training classifiers with FM embeddings
 
 # %% [markdown]
-# ### 3.1 BiLSTM CDS baseline (Split 1 only)
+# #### 2.3.1 BiLSTM CDS baseline (Split 1 only)
 # 
 # Train a BiLSTM directly on CDS token sequences (no pretrained embeddings) as a deep learning baseline.
 
@@ -659,7 +687,17 @@ for k, v in bilstm_metrics.items():
 
 
 # %% [markdown]
-# #### 3.1.1 Protein sequence BiLSTM baseline
+# BiLSTM (CDS) test metrics (mouse + fly):
+# 
+# | Metric   | Value  |
+# |----------|--------|
+# | Accuracy | 0.5845 |
+# | Macro-F1 | 0.5832 |
+# | ROC-AUC  | 0.6282 |
+# | PR-AUC   | 0.6077 |
+
+# %% [markdown]
+# #### 2.3.1.1 Protein sequence BiLSTM baseline
 
 # %%
 # ── Protein sequence vocabulary ────────────────────────────────────────────
@@ -731,7 +769,17 @@ for k, v in prot_bilstm_metrics.items():
 
 
 # %% [markdown]
-# ### 3.2 k-mer + AA composition baselines (Split 1)
+# Protein BiLSTM test metrics (mouse + fly):
+# 
+# | Metric   | Value  |
+# |----------|--------|
+# | Accuracy | 0.5827 |
+# | Macro-F1 | 0.5822 |
+# | ROC-AUC  | 0.6099 |
+# | PR-AUC   | 0.5929 |
+
+# %% [markdown]
+# ### 2.3.2 k-mer + AA composition baselines (Split 1)
 
 # %%
 from sklearn.linear_model import LogisticRegression
@@ -800,7 +848,22 @@ for sp, idx in species_test_idx.items():
 
 
 # %% [markdown]
-# ### 3.3 FM Embedding Classifiers (all 3 splits)
+# === k-mer Logistic Regression ===
+# 
+# {'Split': 'kmer-LR/mouse', 'Accuracy': 0.627, 'Macro-F1': 0.6218, 'Weighted-F1': 0.6218, 'ROC-AUC': 0.6205, 'PR-AUC': 0.5591}
+# 
+# {'Split': 'kmer-LR/fly', 'Accuracy': 0.6937, 'Macro-F1': 0.6931, 'Weighted-F1': 0.6934, 'ROC-AUC': 0.7599, 'PR-AUC': 0.7258}
+# 
+# === AA Composition Logistic Regression ===
+# 
+# {'Split': 'aa-LR/mouse', 'Accuracy': 0.679, 'Macro-F1': 0.6713, 'Weighted-F1': 0.6713, 'ROC-AUC': 0.7298, 'PR-AUC': 0.6667}
+# 
+# {'Split': 'aa-LR/fly', 'Accuracy': 0.7394, 'Macro-F1': 0.7378, 'Weighted-F1': 0.7381, 'ROC-AUC': 0.8277, 'PR-AUC': 0.7748}
+# 
+# 
+
+# %% [markdown]
+# ### 2.3.3 FM Embedding Classifiers (all 3 splits)
 
 # %%
 from sklearn.neural_network import MLPClassifier
@@ -851,6 +914,56 @@ print("\nSaved metrics to data/tf_foundation_metrics.csv")
 
 
 # %% [markdown]
+# ── split1 DNA (NT) ──
+# 
+# {'Split': 'split1/val', 'Accuracy': 0.5, 'Macro-F1': 0.4962, 'Weighted-F1': 0.4962, 'ROC-AUC': 0.5362, 'PR-AUC': 0.5415, 'Model': 'DNA-FM-MLP'}
+# 
+# {'Split': 'split1/mouse', 'Accuracy': 0.561, 'Macro-F1': 0.5605, 'Weighted-F1': 0.5605, 'ROC-AUC': 0.5683, 'PR-AUC': 0.546, 'Model': 'DNA-FM-MLP'}
+# 
+# {'Split': 'split1/fruitfly', 'Accuracy': 0.5702, 'Macro-F1': 0.5501, 'Weighted-F1': 0.5515, 'ROC-AUC': 0.6204, 'PR-AUC': 0.5685, 'Model': 'DNA-FM-MLP'}
+# 
+# 
+# ── split1 Protein (ESM2) ──
+# 
+# {'Split': 'split1/val', 'Accuracy': 0.8333, 'Macro-F1': 0.8331, 'Weighted-F1': 0.8331, 'ROC-AUC': 0.9164, 'PR-AUC': 0.8965, 'Model': 'Protein-FM-MLP'}
+# 
+# {'Split': 'split1/mouse', 'Accuracy': 0.735, 'Macro-F1': 0.7296, 'Weighted-F1': 0.7296, 'ROC-AUC': 0.8347, 'PR-AUC': 0.8142, 'Model': 'Protein-FM-MLP'}
+# 
+# {'Split': 'split1/fruitfly', 'Accuracy': 0.8934, 'Macro-F1': 0.893, 'Weighted-F1': 0.8929, 'ROC-AUC': 0.951, 'PR-AUC': 0.9315, 'Model': 'Protein-FM-MLP'}
+# 
+# 
+# ── split2 DNA (NT) ──
+# 
+# {'Split': 'split2/val', 'Accuracy': 0.64, 'Macro-F1': 0.6305, 'Weighted-F1': 0.6329, 'ROC-AUC': 0.6755, 'PR-AUC': 0.6303, 'Model': 'DNA-FM-MLP'}
+# 
+# {'Split': 'split2/mouse', 'Accuracy': 0.5478, 'Macro-F1': 0.5403, 'Weighted-F1': 0.5405, 'ROC-AUC': 0.5789, 'PR-AUC': 0.5768, 'Model': 'DNA-FM-MLP'}
+# 
+# {'Split': 'split2/fruitfly', 'Accuracy': 0.6091, 'Macro-F1': 0.6091, 'Weighted-F1': 0.6092, 'ROC-AUC': 0.6425, 'PR-AUC': 0.6021, 'Model': 'DNA-FM-MLP'}
+# 
+# 
+# ── split2 Protein (ESM2) ──
+# 
+# {'Split': 'split2/val', 'Accuracy': 0.84, 'Macro-F1': 0.8333, 'Weighted-F1': 0.8347, 'ROC-AUC': 0.9231, 'PR-AUC': 0.9021, 'Model': 'Protein-FM-MLP'}
+# 
+# {'Split': 'split2/mouse', 'Accuracy': 0.7556, 'Macro-F1': 0.7488, 'Weighted-F1': 0.7489, 'ROC-AUC': 0.866, 'PR-AUC': 0.8388, 'Model': 'Protein-FM-MLP'}
+# 
+# {'Split': 'split2/fruitfly', 'Accuracy': 0.9289, 'Macro-F1': 0.9289, 'Weighted-F1': 0.9289, 'ROC-AUC': 0.9749, 'PR-AUC': 0.9636, 'Model': 'Protein-FM-MLP'}
+# 
+# 
+# ── split3 DNA (NT) ──
+# 
+# {'Split': 'split3/val', 'Accuracy': 0.495, 'Macro-F1': 0.4834, 'Weighted-F1': 0.4834, 'ROC-AUC': 0.4939, 'PR-AUC': 0.4876, 'Model': 'DNA-FM-MLP'}
+# 
+# {'Split': 'split3/fruitfly', 'Accuracy': 0.5364, 'Macro-F1': 0.4493, 'Weighted-F1': 0.446, 'ROC-AUC': 0.6075, 'PR-AUC': 0.5831, 'Model': 'DNA-FM-MLP'}
+# 
+# 
+# ── split3 Protein (ESM2) ──
+# 
+# {'Split': 'split3/val', 'Accuracy': 0.805, 'Macro-F1': 0.8002, 'Weighted-F1': 0.8002, 'ROC-AUC': 0.9168, 'PR-AUC': 0.9039, 'Model': 'Protein-FM-MLP'}
+# 
+# {'Split': 'split3/fruitfly', 'Accuracy': 0.9289, 'Macro-F1': 0.9289, 'Weighted-F1': 0.9288, 'ROC-AUC': 0.975, 'PR-AUC': 0.9653, 'Model': 'Protein-FM-MLP'}
+
+# %% [markdown]
 # ### ROC Curves per species
 
 # %%
@@ -894,6 +1007,10 @@ print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
+# ![ROC Curves](figures/roc_curves_split1_mouse_fly.png)
+# The above ROC curves show the performance of the DNA FM and Protein FM MLP classifiers on the mouse and fly test sets from Split 1. The Protein FM generally has higher AUCs than the DNA FM, especially for fly, indicating better generalisation across species.
+
+# %% [markdown]
 # ### Confusion Matrices
 
 # %%
@@ -921,22 +1038,26 @@ print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
+# ![Confusion Matrices](figures/confusion_matrices_split1_mouse_fly.png)
+# The above confusion matrices show the performance of the DNA FM and Protein FM MLP classifiers on the mouse and fly test sets from Split 1. The Protein FM demonstrates much higher sensitivity (true positive rate) than the DNA FM, particularly in the fruitfly test set where only 8 TFs were misclassified compared to 185 by the DNA FM. The DNA FM struggles significantly with mouse, showing a high number of both false positives (236) and false negatives (203), whereas the Protein FM drastically reduces false negatives to 62
+
+# %% [markdown]
 # ### Metrics Summary Table
 
 # %%
 # Build a full comparison table including baselines
 baseline_rows = rows_kmer + rows_aa
 
-bilstm_row_cds = {"Model": "BiLSTM-CDS", "Split": "split1/test",
+bilstm_row_cds = {"Model": "BiLSTM-CDS(DL Baseline)", "Split": "split1/test",
                    **{k: round(v, 4) for k, v in bilstm_metrics.items()}}
-bilstm_row_prot = {"Model": "BiLSTM-Protein", "Split": "split1/test",
+bilstm_row_prot = {"Model": "BiLSTM-Protein(DL Baseline)", "Split": "split1/test",
                     **{k: round(v, 4) for k, v in prot_bilstm_metrics.items()}}
 
 for r in baseline_rows:
     if "kmer" in r["Split"]:
-        r["Model"] = "kmer-LR"
+        r["Model"] = "kmer-LR(Classical Baseline)"
     else:
-        r["Model"] = "AA-LR"
+        r["Model"] = "AA-LR(Classical Baseline)"
 
 summary_df = pd.concat([
     pd.DataFrame(baseline_rows),
@@ -945,14 +1066,41 @@ summary_df = pd.concat([
 ], ignore_index=True)
 
 # Reorder columns
-cols = ["Model", "Split", "Accuracy", "Macro-F1", "Weighted-F1", "ROC-AUC", "PR-AUC"]
+cols = ["Model(Family)", "Split", "Accuracy", "Macro-F1", "Weighted-F1", "ROC-AUC", "PR-AUC"]
 cols = [c for c in cols if c in summary_df.columns]
 summary_df = summary_df[cols].sort_values(["Model", "Split"])
 print(summary_df.to_string(index=False))
 
 
 # %% [markdown]
+# | Model(Family) | Split | Accuracy | Macro-F1 | Weighted-F1 | ROC-AUC | PR-AUC |
+# |---|---|---:|---:|---:|---:|---:|
+# | kmer-LR(Classical Baseline) | kmer-LR/fly | 0.6937 | 0.6931 | 0.6934 | 0.7599 | 0.7258 |
+# | kmer-LR(Classical Baseline) | kmer-LR/mouse | 0.6270 | 0.6218 | 0.6218 | 0.6205 | 0.5591 |
+# | BiLSTM-CDS(DL Baseline) | split1/test | 0.5845 | 0.5832 | NaN | 0.6282 | 0.6077 |
+# | DNA-FM-MLP | split1/fruitfly | 0.5702 | 0.5501 | 0.5515 | 0.6204 | 0.5685 |
+# | DNA-FM-MLP | split1/mouse | 0.5610 | 0.5605 | 0.5605 | 0.5683 | 0.5460 |
+# | DNA-FM-MLP | split1/val | 0.5000 | 0.4962 | 0.4962 | 0.5362 | 0.5415 |
+# | DNA-FM-MLP | split2/fruitfly | 0.6091 | 0.6091 | 0.6092 | 0.6425 | 0.6021 |
+# | DNA-FM-MLP | split2/mouse | 0.5478 | 0.5403 | 0.5405 | 0.5789 | 0.5768 |
+# | DNA-FM-MLP | split2/val | 0.6400 | 0.6305 | 0.6329 | 0.6755 | 0.6303 |
+# | DNA-FM-MLP | split3/fruitfly | 0.5364 | 0.4493 | 0.4460 | 0.6075 | 0.5831 |
+# | DNA-FM-MLP | split3/val | 0.4950 | 0.4834 | 0.4834 | 0.4939 | 0.4876 |
+# | AA-LR(Classical Baseline) | aa-LR/fly | 0.7394 | 0.7378 | 0.7381 | 0.8277 | 0.7748 |
+# | AA-LR(Classical Baseline) | aa-LR/mouse | 0.6790 | 0.6713 | 0.6713 | 0.7298 | 0.6667 |
+# | BiLSTM-Protein(DL Baseline) | split1/test | 0.6631 | 0.6596 | NaN | 0.7116 | 0.6584 |
+# | Protein-FM-MLP | split1/fruitfly | 0.8934 | 0.8930 | 0.8929 | 0.9510 | 0.9315 |
+# | Protein-FM-MLP | split1/mouse | 0.7350 | 0.7296 | 0.7296 | 0.8347 | 0.8142 |
+# | Protein-FM-MLP | split1/val | 0.8333 | 0.8331 | 0.8331 | 0.9164 | 0.8965 |
+# | Protein-FM-MLP | split2/fruitfly | 0.9289 | 0.9289 | 0.9289 | 0.9749 | 0.9636 |
+# | Protein-FM-MLP | split2/mouse | 0.7556 | 0.7488 | 0.7489 | 0.8660 | 0.8388 |
+# | Protein-FM-MLP | split2/val | 0.8400 | 0.8333 | 0.8347 | 0.9231 | 0.9021 |
+# | Protein-FM-MLP | split3/fruitfly | 0.9289 | 0.9289 | 0.9288 | 0.9750 | 0.9653 |
+# | Protein-FM-MLP | split3/val | 0.8050 | 0.8002 | 0.8002 | 0.9168 | 0.9039 |
+
+# %% [markdown]
 # ### Analysis
+# ### ---TODO----
 # 
 # **Best classifier overall:** The Protein FM (ESM2) MLP is generally the best performer. ESM2 embeddings capture evolutionary conservation of functional protein domains (e.g., zinc-finger, homeodomain, bHLH motifs) that are preserved across species, allowing the model to generalise well in zero-shot transfer.
 # 
@@ -962,7 +1110,7 @@ print(summary_df.to_string(index=False))
 # 
 
 # %% [markdown]
-# ## 4. PCA + UMAP Visualizations
+# ### PCA + UMAP Visualizations
 
 # %%
 from sklearn.decomposition import PCA
@@ -1033,40 +1181,31 @@ print(f"[INFO] Saved figure: {fig_path}")
 
 
 # %% [markdown]
-# ### Observations on UMAP/t-SNE projections
+# ![Protein Embeddings](figures/protein_embedding_projection.png)
+# The above UMAP projections of ESM2 protein embeddings show that sequences partially cluster by species and mostly cluster by TF/non-TF label (stronger separation). Human and mouse sequences intermingle, reflecting their close evolutionary relationship, while fly sequences form a bit more distinct clusters close to human and mouse sequences. TFs tend to cluster together, likely due to shared functional domains, but there is also some mixing with non-TFs, indicating that the embeddings capture a spectrum of functional features rather than a strict binary separation.
 # 
-# - **Protein embeddings by species**: Clusters that mix all three species are evident for both TF and non-TF classes, indicating that ESM2 captures functional features conserved across evolution. Some fly-specific clusters remain, reflecting the larger sequence divergence.
-# - **Protein embeddings by label**: TF and non-TF points form partially separable clusters in protein embedding space, confirming that ESM2 captures biochemically meaningful differences between TF and non-TF proteins.
-# - **DNA embeddings by species**: DNA embeddings show stronger species clustering than protein embeddings. Human and mouse sequences cluster together (reflecting ~87% nucleotide identity in coding regions), while fly sequences form a more distinct cluster.
-# - **DNA embeddings by label**: TF/non-TF separation is less clear in DNA embedding space than in protein space, consistent with the lower cross-species transfer performance of DNA-based models.
 # 
+# ![DNA Embeddings](figures/dna_embedding_projection.png)
+# The UMAP projections of Nucleotide Transformer DNA embeddings show similar species clustering like the protein embeddings. Human and mouse sequences cluster together at a spot, but they also custer together with fly sequences. The separation between TF and non-TF sequences is less clear in DNA embedding space than in protein space, consistent with the lower cross-species transfer performance of DNA-based models. This suggests that while the DNA FM captures some functional signals, it is more influenced by species-specific sequence features that do not generalise as well across distant species.
 
 # %% [markdown]
-# ## 5. Discussion
-
-# %% [markdown]
-# ### Cross-Species Transfer
+# ## 3. Discussion
 # 
-# **Protein FM > DNA FM for cross-species transfer.** ESM2 protein embeddings consistently outperform Nucleotide Transformer embeddings on zero-shot transfer from human to mouse and fly. This reflects the conservation of functional protein domains (e.g., zinc-finger, homeodomain, bHLH motifs) across metazoan evolution. DNA sequences accumulate synonymous substitutions and codon-usage biases that reduce transferability even within coding regions.
 # 
-# **Mouse benefits from few-shot fine-tuning (Split 2).** Adding only 50 mouse training genes meaningfully improves performance on held-out mouse sequences. This suggests that a small amount of labeled data from the target species can substantially close the gap introduced by sequence divergence.
+# 1. **Cross-Species Trends and Model Performance:** The experimental results demonstrate that the Protein FM (ESM2) MLP is the best classifier overall. It significantly outperforms the DNA-based foundation model and the BiLSTM baselines, particularly in zero-shot cross-species transfer tasks. The Protein FM achieves a high ROC-AUC (e.g., 0.95 for fruitfly in Split 1) compared to the DNA FM (0.62 for fruitfly), confirming that cross-species metrics are substantially higher for protein than DNA.
 # 
-# **Fly is the hardest transfer target.** ~700 million years of divergence from human/mouse makes fly the most challenging species for zero-shot transfer. Protein models still achieve non-trivial AUC on fly (due to conserved DNA-binding domain sequences), whereas DNA-based models struggle significantly.
+# 2. **Biological Interpretation:** The superior performance of protein embeddings, especially for evolutionary distant species like the fruitfly, which gains the most from this modality, is likely due to the high conservation of functional protein domains. While human and fly diverged over 700 million years ago, leading to high nucleotide sequence divergence and distinct codon usage biases, the DNA-binding domains (e.g., homeobox or zinc-finger motifs) remain highly conserved at the amino-acid level. The UMAP visualizations support this, showing that while DNA embeddings are heavily influenced by species-specific sequence features, protein embeddings form more distinct clusters based on functional labels (TF vs. non-TF) across different species.
 # 
-# ### Limitations
+# 3. **Limitations:** There are several limitations to this study:
 # 
-# 1. **Annotation incompleteness**: Many TFs in fly are not fully annotated; our non-TF background may include unannotated TFs.
-# 2. **GO:0003700 breadth**: This GO term encompasses diverse TF families with very different sequence signatures; a more refined family-level analysis could be informative.
-# 3. **Isoform choice**: We use only the canonical transcript. Alternative isoforms can have distinct functions and may confound classification.
-# 4. **Sequence truncation**: Long CDS sequences are truncated at 1024 tokens. Foundation models with longer context windows (e.g., Evo2) may perform better.
-# 5. **Class imbalance at family level**: While we balance TF vs non-TF, individual TF families (e.g., C2H2, bHLH) are unevenly represented.
+#     1. **Annotation Bias:** The dataset assumes that all TFs are correctly annotated in Gene Ontology, meaning unannotated TFs might be mislabeled as negatives in the non-TF set.
+#     2. **Missing Context:** The current models only use the primary sequence (CDS or protein) and do not account for chromatin context, evidence levels for annotations, or structural factors like isoforms.
+#     3. **TF Families:** The analysis does not yet break down performance by specific TF families, which may have varying levels of evolutionary conservation.
 # 
-# ### Potential Extensions
+# 4. **Potential Extensions:** Future work could enhance these models by:
 # 
-# - **Chromatin context**: Incorporate ATAC-seq or DNase-seq signals to model TF accessibility.
-# - **Multi-task learning**: Train on TF binding site prediction and TF vs non-TF simultaneously to share representations.
-# - **Cross-family analysis**: Evaluate which TF families transfer best/worst across species.
-# - **Ensemble**: Combine DNA and protein embeddings via late fusion for improved performance.
-# 
+#     1. **Multi-task Learning:** Training the model to predict multiple functional attributes simultaneously to improve the richness of the learned representations.
+#     2. **Incorporating Epigenomics:** Adding features such as chromatin accessibility (ATAC-seq) or histone modifications to better predict TF activity in specific cellular contexts.
+#     3. **Fine-tuning:** Performing more extensive supervised fine-tuning on diverse species to see if DNA models can overcome species-specific biases with more data
 
 
