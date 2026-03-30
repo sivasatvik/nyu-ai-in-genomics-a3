@@ -3,6 +3,9 @@
 # 
 # #### Siva Satvik Mandapati - sm12779
 
+# %% [markdown]
+# **NOTE:** Run the converted python file attached as a batch process in HPC otherwise, there might be some errors and timeouts due to the downloads taking sometime.
+
 # %%
 import sys
 import numpy as np
@@ -467,7 +470,7 @@ for k, v in splits.items():
 # %%
 # Download model snapshot from Hugging Face Hub
 from huggingface_hub import snapshot_download
-local_dir = "./models"
+local_dir = "./models/nucleotide-transformer-v2-500m-multi-species"
 snapshot_download(repo_id="InstaDeepAI/nucleotide-transformer-v2-500m-multi-species", local_dir=local_dir)
 
 # %%
@@ -532,7 +535,7 @@ else:
 # %%
 # Download model snapshot from Hugging Face Hub
 from huggingface_hub import snapshot_download
-local_dir = "./models"
+local_dir = "./models/esm2_t33_650M_UR50D"
 snapshot_download(repo_id="facebook/esm2_t33_650M_UR50D", local_dir=local_dir)
 
 # %%
