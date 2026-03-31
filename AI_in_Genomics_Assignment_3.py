@@ -274,7 +274,7 @@ dataset.head()
 # I noticed that building the dataset takes a lot of time because retrieving data from the endpoints is slow. To address this, I added a condition to load the dataset from local storage when it is available, instead of rebuilding it each time.
 
 # %% [markdown]
-# ## 1.4 Dataset Statistics + Visualizations
+# ### 1.4 Dataset Statistics + Visualizations
 # ### Gene counts per species and label
 
 # %%
@@ -387,7 +387,7 @@ print(f"[INFO] Saved figure: {fig_path}")
 # The above figure shows the mean amino-acid composition of proteins across species. The mean amino-acid composition is highly conserved across human, mouse, and fruitfly, with Alanine (A), Leucine (L), and Serine (S) being among the most frequent. Subtle species-specific differences exist: mouse proteins show a significantly higher fraction of Glutamic Acid (E) compared to the other species, while fruitfly has slightly higher levels of Aspartic Acid (D)
 
 # %% [markdown]
-# ## 1.5 Train/Val/Test Splits
+# ### 1.5 Train/Val/Test Splits
 
 # %%
 from sklearn.model_selection import train_test_split
@@ -576,7 +576,7 @@ else:
 # ### 2.3 Training classifiers with FM embeddings
 
 # %% [markdown]
-# #### 2.3.1 BiLSTM CDS baseline (Split 1 only)
+# #### 2.3.1.1 BiLSTM CDS baseline (Split 1 only)
 # 
 # Train a BiLSTM directly on CDS token sequences (no pretrained embeddings) as a deep learning baseline.
 
@@ -714,7 +714,7 @@ for k, v in bilstm_metrics.items():
 # | PR-AUC   | 0.6077 |
 
 # %% [markdown]
-# #### 2.3.1.1 Protein sequence BiLSTM baseline
+# #### 2.3.1.2 Protein sequence BiLSTM baseline
 
 # %%
 # ── Protein sequence vocabulary ────────────────────────────────────────────
@@ -981,6 +981,18 @@ print("\nSaved metrics to data/tf_foundation_metrics.csv")
 # {'Split': 'split3/fruitfly', 'Accuracy': 0.9289, 'Macro-F1': 0.9289, 'Weighted-F1': 0.9288, 'ROC-AUC': 0.975, 'PR-AUC': 0.9653, 'Model': 'Protein-FM-MLP'}
 
 # %% [markdown]
+# ### Model Configurations (Hyperparameters)
+# 
+# | Category | Model | Key hyperparameters |
+# |---|---|---|
+# | FM (CDS) | Nucleotide Transformer + MLP (`DNA-FM-MLP`) | Embedding model: `InstaDeepAI/nucleotide-transformer-v2-500m-multi-species`; sliding-window embedding with `MAX_DNA_LEN=1024`, `STRIDE=512`; fp16 on GPU. Classifier: `MLPClassifier(hidden_layer_sizes=(256, 64), max_iter=300, random_state=SEED, early_stopping=True)` |
+# | FM (Protein) | ESM2 + MLP (`Protein-FM-MLP`) | Embedding model: `facebook/esm2_t33_650M_UR50D`; truncation `max_length=1024`; fp16 on GPU. Classifier: `MLPClassifier(hidden_layer_sizes=(256, 64), max_iter=300, random_state=SEED, early_stopping=True)` |
+# | Deep Learning baseline (CDS) | BiLSTM (`BiLSTM-CDS`) | Architecture: `vocab_size=6`, `emb_dim=32`, `hidden=64`, `num_layers=2`, `bidirectional=True`, `dropout=0.3`. Training: `batch_size=32`, `optimizer=Adam(lr=1e-3)`, `loss=BCELoss`, `epochs=10`, decision threshold `0.5` |
+# | Deep Learning baseline (Protein) | BiLSTM (`BiLSTM-Protein`) | Architecture: `vocab_size=21`, `emb_dim=32`, `hidden=64`, `num_layers=2`, `bidirectional=True`, `dropout=0.3`. Training: `batch_size=32`, `optimizer=Adam(lr=1e-3)`, `loss=BCELoss`, `epochs=10`, decision threshold `0.5` |
+# | Classical baseline (CDS) | k-mer Logistic Regression (`kmer-LR`) | Features: normalized 3-mer frequency (`k=3`). Classifier: `LogisticRegression(max_iter=2000, class_weight="balanced", random_state=SEED)` |
+# | Classical baseline (Protein) | Amino-acid composition Logistic Regression (`AA-LR`) | Features: normalized 20-AA composition. Classifier: `LogisticRegression(max_iter=2000, class_weight="balanced", random_state=SEED)` |
+
+# %% [markdown]
 # ### ROC Curves per species
 
 # %%
@@ -1117,11 +1129,10 @@ print(summary_df.to_string(index=False))
 
 # %% [markdown]
 # ### Analysis
-# ### ---TODO----
 # 
 # **Best classifier overall:** The Protein FM (ESM2) MLP is generally the best performer. ESM2 embeddings capture evolutionary conservation of functional protein domains (e.g., zinc-finger, homeodomain, bHLH motifs) that are preserved across species, allowing the model to generalise well in zero-shot transfer.
 # 
-# **Species gaining most from protein embeddings:** Fly typically benefits most from protein embeddings over DNA embeddings. The nucleotide sequence divergence between human/mouse and fly is very high (>700 Mya of evolution), so DNA-based models struggle. However, functional protein domains (e.g., C2H2 zinc fingers) are more conserved at the amino-acid level, making protein embeddings more informative for fly.
+# **Species gaining most from protein embeddings:** Fly typically benefits most from protein embeddings over DNA embeddings. The nucleotide sequence divergence between human/mouse and fly is very high (>700 Million years of evolution), so DNA-based models struggle. However, functional protein domains (e.g., C2H2 zinc fingers) are more conserved at the amino-acid level, making protein embeddings more informative for fly.
 # 
 # **Cross-species metrics higher for protein than DNA?** Yes, in general. TF DNA-binding domains show strong sequence conservation at the protein level across deep evolutionary distances (e.g., homeobox domains are conserved from fly to human). Nucleotide sequences, even in coding regions, accumulate synonymous substitutions and codon usage biases that obscure functional similarity. ESM2 was trained on hundreds of millions of protein sequences from all kingdoms of life, giving it richer representations of conserved functional motifs.
 # 
